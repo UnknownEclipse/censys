@@ -11,7 +11,7 @@ variable (or the equivalent for Windows).
 Now run it as any other Go program, any number of addresses may be provided:
 
 ```sh
-go run main.go 'my_sql_host1:my_sql_port1' 'my_sql_host2:my_sql_port2'
+go run main.go 'host1:port1' 'host2:port2'
 ```
 
 For example, if you have a MySQL server running at the default port 3306 on your
