@@ -274,10 +274,10 @@ func main() {
 	for i := 1; i < len(os.Args); i++ {
 		wg.Add(1)
 
-		go func() {
+		go func(addr string) {
 			defer wg.Done()
-			checkAddr(os.Args[i], &mtx)
-		}()
+			checkAddr(addr, &mtx)
+		}(os.Args[i])
 	}
 
 	wg.Wait()
