@@ -223,15 +223,6 @@ func parseHandshakePacket(p *packet) (*Handshake, error) {
 	return h, nil
 }
 
-func recvHandshake(r io.Reader) (*Handshake, error) {
-	p, err := readPacket(r)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseHandshakePacket(p)
-}
-
 func GetHandshake(addr string) (*Handshake, error) {
 	c, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
@@ -245,7 +236,11 @@ func GetHandshake(addr string) (*Handshake, error) {
 }
 
 func GetHandshakeFromReader(r io.Reader) (*Handshake, error) {
-	return recvHandshake(r)
+	p, err := readPacket(r)
+	if err != nil {
+		return nil, err
+	}
+	return parseHandshakePacket(p)
 }
 
 func checkAddr(addr string, printMutex *sync.Mutex) {
