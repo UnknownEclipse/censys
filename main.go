@@ -230,19 +230,18 @@ func recvHandshake(r io.Reader) (*Handshake, error) {
 	}
 
 	return parseHandshakePacket(p)
-
 }
 
 func GetHandshake(addr string) (*Handshake, error) {
-	r, err := net.DialTimeout("tcp", addr, time.Second)
+	c, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer c.Close()
 
 	// Limit session length to 1s for safety
-	r.SetDeadline(time.Now().Add(deadline))
-	return GetHandshakeFromReader(r)
+	c.SetDeadline(time.Now().Add(deadline))
+	return GetHandshakeFromReader(c)
 }
 
 func GetHandshakeFromReader(r io.Reader) (*Handshake, error) {
