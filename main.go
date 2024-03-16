@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -28,6 +29,10 @@ type packet struct {
 
 const (
 	deadline = time.Second
+)
+
+var (
+	ErrNotAscii = errors.New("ErrNotAscii")
 )
 
 func (p *packet) readUint8() (uint8, error) {
@@ -62,6 +67,9 @@ func (p *packet) readCstr() ([]byte, error) {
 		}
 		if p.data[n] == 0 {
 			break
+		}
+		if 0x7f < p.data[n] {
+			return nil, ErrNotAscii
 		}
 		n++
 	}
