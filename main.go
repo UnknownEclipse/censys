@@ -68,7 +68,7 @@ func (p *packet) readCstr() ([]byte, error) {
 	n := 0
 	for {
 		if len(p.data) == n {
-			return nil, io.EOF
+			return nil, io.ErrUnexpectedEOF
 		}
 		if p.data[n] == 0 {
 			break
@@ -86,7 +86,7 @@ func (p *packet) readCstr() ([]byte, error) {
 
 func (p *packet) read(n int) ([]byte, error) {
 	if len(p.data) < n {
-		return nil, io.EOF
+		return nil, io.ErrUnexpectedEOF
 	}
 	b := p.data[:n]
 	p.data = p.data[n:]
@@ -134,7 +134,7 @@ func readAll(r io.Reader, buf []byte) error {
 			return err
 		}
 		if n == 0 {
-			return io.EOF
+			return io.ErrUnexpectedEOF
 		}
 		buf = buf[n:]
 	}
@@ -283,6 +283,38 @@ func main() {
 	// requests to run concurrently
 	var mtx sync.Mutex
 
+	if len(os.Args) == 2 && os.Args[1] == "test" {
+		var tests []test
+
+		tests = append(tests, test{"ok", TestOk})
+		tests = append(tests, test{"tarpit", TestTarpit})
+		tests = append(tests, test{"short", TestShort})
+		tests = append(tests, test{"big packet", TestBigPacket})
+		tests = append(tests, test{"invalid protocol version", TestBadProtoVer})
+
+		for i := 0; i < len(tests); i++ {
+			wg.Add(1)
+
+			go func(t test) {
+				ok := t.f()
+
+				mtx.Lock()
+				defer mtx.Unlock()
+
+				if ok {
+					fmt.Printf("test '%s' succeeded!\n", t.name)
+				} else {
+					fmt.Printf("test '%s' failed!\n", t.name)
+				}
+
+				wg.Done()
+			}(tests[i])
+		}
+
+		wg.Wait()
+		return
+	}
+
 	for i := 1; i < len(os.Args); i++ {
 		wg.Add(1)
 
@@ -293,4 +325,120 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+var (
+	testOkPacket = []byte{0x49, 0x0, 0x0, 0x0, 0xa, 0x38, 0x2e, 0x33, 0x2e, 0x30, 0x0, 0x24, 0x0, 0x0, 0x0, 0x3, 0x5e, 0x10, 0x34, 0xc, 0x32, 0x64, 0x38, 0x0, 0xff, 0xff, 0xff, 0x2, 0x0, 0xff, 0xdf, 0x15, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x26, 0x48, 0x1, 0xb, 0xe, 0x31, 0x5e, 0x36, 0x25, 0x9, 0x22, 0x7, 0x0, 0x63, 0x61, 0x63, 0x68, 0x69, 0x6e, 0x67, 0x5f, 0x73, 0x68, 0x61, 0x32, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x0}
+)
+
+type test struct {
+	name string
+	f    func() bool
+}
+
+func writeFull(w io.Writer, b []byte) (int, error) {
+	total := 0
+	for total < len(b) {
+		n, err := w.Write(b[total:])
+		if err != nil {
+			return total, err
+		}
+		if n == 0 {
+			return total, io.ErrUnexpectedEOF
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func TestOk() bool {
+	s, c := net.Pipe()
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		defer conn.Close()
+		writeFull(conn, testOkPacket)
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+
+	return err == nil
+}
+
+func TestTarpit() bool {
+	s, c := net.Pipe()
+
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		defer conn.Close()
+
+		for i := 1; i < len(testOkPacket); i++ {
+			b := testOkPacket[i-1 : i+1]
+			writeFull(conn, b)
+			time.Sleep(time.Millisecond * 500)
+		}
+
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+	return err != nil
+}
+
+func TestBigPacket() bool {
+	s, c := net.Pipe()
+
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		p := slices.Clone(testOkPacket)
+		// Set length to a massive number
+		p[1] = 0xff
+		p[2] = 0xff
+		defer conn.Close()
+		writeFull(conn, p)
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+
+	return err != nil
+}
+
+func TestShort() bool {
+	s, c := net.Pipe()
+
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		defer conn.Close()
+		writeFull(conn, testOkPacket[:len(testOkPacket)-1])
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+
+	return err != nil
+}
+
+func TestBadProtoVer() bool {
+	s, c := net.Pipe()
+
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		defer conn.Close()
+
+		p := slices.Clone(testOkPacket)
+		// Set protocol to 11 (not 9 or 10)
+		p[4] = 11
+		writeFull(conn, p)
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+
+	return err != nil
 }

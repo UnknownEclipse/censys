@@ -40,3 +40,12 @@ a running server, you'll get something like
 ```text
 Address 'localhost:1234' is likely not a MySQL server (encountered error: 'dial tcp 127.0.0.1:1234: connect: connection refused')
 ```
+
+## Testing
+
+Testing is done by running the executable file with the argument 'test' like
+this:
+
+```sh
+go run main.go test
+```
