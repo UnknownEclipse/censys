@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"sync"
 	"time"
 )
@@ -24,7 +25,9 @@ type Handshake struct {
 }
 
 type packet struct {
-	data []byte
+	// Raw data including header
+	rawData []byte
+	data    []byte
 }
 
 const (
@@ -170,6 +173,7 @@ func readPacket(r io.Reader, limit uint32) (*packet, error) {
 		return nil, err
 	}
 
+	p.rawData = slices.Concat(buf, p.data)
 	return p, nil
 }
 
