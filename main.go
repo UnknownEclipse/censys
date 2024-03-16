@@ -28,11 +28,13 @@ type packet struct {
 }
 
 const (
-	deadline = time.Second
+	deadline        = time.Second
+	handshakeMaxLen = 256
 )
 
 var (
-	ErrNotAscii = errors.New("ErrNotAscii")
+	ErrNotAscii       = errors.New("ErrNotAscii")
+	ErrPacketTooLarge = errors.New("ErrPacketTooLarge")
 )
 
 func (p *packet) readUint8() (uint8, error) {
@@ -142,7 +144,7 @@ func splitHeader(h uint32) (uint32, uint8) {
 	return packetLen, seqId
 }
 
-func readPacket(r io.Reader) (*packet, error) {
+func readPacket(r io.Reader, limit uint32) (*packet, error) {
 	buf := make([]byte, 4)
 	err := readAll(r, buf)
 	if err != nil {
@@ -155,6 +157,10 @@ func readPacket(r io.Reader) (*packet, error) {
 	hdr := binary.LittleEndian.Uint32(buf)
 
 	packetLen, _ := splitHeader(hdr)
+
+	if limit < packetLen {
+		return nil, ErrPacketTooLarge
+	}
 
 	p := new(packet)
 	p.data = make([]byte, packetLen)
@@ -244,7 +250,7 @@ func GetHandshake(addr string) (*Handshake, error) {
 }
 
 func GetHandshakeFromReader(r io.Reader) (*Handshake, error) {
-	p, err := readPacket(r)
+	p, err := readPacket(r, handshakeMaxLen)
 	if err != nil {
 		return nil, err
 	}
