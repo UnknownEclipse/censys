@@ -291,6 +291,7 @@ func main() {
 		tests = append(tests, test{"short", TestShort})
 		tests = append(tests, test{"big packet", TestBigPacket})
 		tests = append(tests, test{"invalid protocol version", TestBadProtoVer})
+		tests = append(tests, test{"non-ascii server version", TestNonAsciiServerVersion})
 
 		for i := 0; i < len(tests); i++ {
 			wg.Add(1)
@@ -368,7 +369,6 @@ func TestOk() bool {
 
 func TestTarpit() bool {
 	s, c := net.Pipe()
-
 	defer c.Close()
 
 	go func(conn net.Conn) {
@@ -434,6 +434,26 @@ func TestBadProtoVer() bool {
 		p := slices.Clone(testOkPacket)
 		// Set protocol to 11 (not 9 or 10)
 		p[4] = 11
+		writeFull(conn, p)
+	}(s)
+
+	c.SetDeadline(time.Now().Add(deadline))
+	_, err := GetHandshakeFromReader(c)
+
+	return err != nil
+}
+
+func TestNonAsciiServerVersion() bool {
+	s, c := net.Pipe()
+
+	defer c.Close()
+
+	go func(conn net.Conn) {
+		defer conn.Close()
+
+		p := slices.Clone(testOkPacket)
+		// Set a byte in the server version to an invalid ascii byte
+		p[7] = 0x80
 		writeFull(conn, p)
 	}(s)
 
